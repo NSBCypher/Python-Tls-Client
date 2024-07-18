@@ -352,6 +352,7 @@ class Session:
         cookie_response_bytes = ctypes.string_at(cookie_response)
         cookie_response_string = cookie_response_bytes.decode('utf-8')
         cookie_response_object = loads(cookie_response_string)
+        freeMemory(cookie_response_object['id'].encode('utf-8'))
         return cookie_response_object["cookies"]
 
     def add_cookies_to_session(self, url: str, cookies: List[Dict[str, str]]) -> None:
@@ -366,7 +367,23 @@ class Session:
         add_cookies_bytes = ctypes.string_at(add_cookies_to_session_response)
         add_cookies_string = add_cookies_bytes.decode('utf-8')
         add_cookies_object = loads(add_cookies_string)
-        print(add_cookies_object)
+        freeMemory(add_cookies_object['id'].encode('utf-8'))
+
+    def clear_cookies(self):
+        # Gets all cookies and sets the maxAge to -1
+        prepared_cookies = self._prepare_cookies(self.cookies)
+        # Seperate cookies by host, as we must delete by domain
+        host_cookies = {}
+        for cookie in prepared_cookies:
+            if cookie["domain"] not in host_cookies:
+                host_cookies[cookie["domain"]] = []
+            cookie["maxAge"] = -1
+            host_cookies[cookie["domain"]].append(cookie)
+        # Clear the object cookieJar
+        self.cookies.clear()
+        # Clear the cookies in the interal cookieJar
+        for domain,host_cookie_list in host_cookies.items():
+            self.add_cookies_to_session(f"https://{domain}", host_cookie_list)
 
     @staticmethod
     def _prepare_url(url: str, params: Optional[Dict] = None) -> str:

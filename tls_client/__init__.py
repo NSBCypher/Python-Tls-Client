@@ -13,6 +13,6 @@
 # requests: https://github.com/psf/requests
 from .update_lib import update_lib
 
-update_lib()
+update_lib(only_if_no_dir=True)
 
 from .sessions import Session
