@@ -369,22 +369,6 @@ class Session:
         add_cookies_object = loads(add_cookies_string)
         freeMemory(add_cookies_object['id'].encode('utf-8'))
 
-    def clear_cookies(self):
-        # Gets all cookies and sets the maxAge to -1
-        prepared_cookies = self._prepare_cookies(self.cookies)
-        # Seperate cookies by host, as we must delete by domain
-        host_cookies = {}
-        for cookie in prepared_cookies:
-            if cookie["domain"] not in host_cookies:
-                host_cookies[cookie["domain"]] = []
-            cookie["maxAge"] = -1
-            host_cookies[cookie["domain"]].append(cookie)
-        # Clear the object cookieJar
-        self.cookies.clear()
-        # Clear the cookies in the interal cookieJar
-        for domain,host_cookie_list in host_cookies.items():
-            self.add_cookies_to_session(f"https://{domain}", host_cookie_list)
-
     @staticmethod
     def _prepare_url(url: str, params: Optional[Dict] = None) -> str:
         if params is not None:
@@ -442,6 +426,7 @@ class Session:
                                method: str,
                                url: str,
                                headers: CaseInsensitiveDict,
+                               header_order: Optional[List[str]],
                                request_body: Optional[Union[str, bytes, bytearray]],
                                request_cookies: List[Dict],
                                is_byte_request: bool,
@@ -465,7 +450,7 @@ class Session:
             "disableIPV6": self.disable_ipv6,
             "followRedirects": False,
             "forceHttp1": self.force_http1,
-            "headerOrder": self.header_order,
+            "headerOrder": header_order,
             "headers": dict(headers),
             "insecureSkipVerify": not verify,
             "isByteRequest": is_byte_request,
@@ -561,6 +546,8 @@ class Session:
         if content_type is not None:
             headers["Content-Type"] = content_type
 
+        header_order = [x.lower() for x in headers] if headers else None
+
         request_cookies = self._prepare_cookies(cookies)
 
         proxy = self._get_proxy(proxy, proxies)
@@ -579,6 +566,7 @@ class Session:
                 method=method,
                 url=url,
                 headers=headers,
+                header_order=header_order,
                 request_body=request_body,
                 request_cookies=request_cookies,
                 is_byte_request=is_byte_request,
