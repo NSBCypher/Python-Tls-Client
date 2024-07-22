@@ -638,6 +638,8 @@ class Session:
             return None
         if url_redirect.startswith("/"):
             url = urljoin(url, url_redirect)
+        else:
+            url = url_redirect
         return url
 
     @staticmethod
