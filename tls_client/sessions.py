@@ -371,8 +371,13 @@ class Session:
 
     @staticmethod
     def _prepare_url(url: str, params: Optional[Dict] = None) -> str:
+
         if params is not None:
-            return f"{url}?{urllib.parse.urlencode(params, doseq=True)}"
+            parsed_url = urllib.parse.urlparse(url)
+            query_dict = dict(urllib.parse.parse_qsl(parsed_url.query))
+            query_dict.update(params)
+
+            url = url.split("?")[0] + "?" + urllib.parse.urlencode(query_dict, doseq=True)
         return url
 
     @staticmethod
@@ -398,19 +403,21 @@ class Session:
             merged_headers.update(headers)
             return CaseInsensitiveDict(merged_headers)
 
-    def _prepare_cookies(self, cookies: Optional[Dict] = None) -> List[Dict[str, str]]:
+    def _prepare_cookies(self, url:str, cookies: Optional[Dict] = None) -> List[Dict[str, str]]:
+        host = urllib.parse.urlparse(url).netloc
         cookies = cookies or {}
         cookies = merge_cookies(self.cookies, cookies)
-        return [
-            {
-                'domain': c.domain,
-                'expires': c.expires,
-                'name': c.name,
-                'path': c.path,
-                'value': c.value.replace('"', "")
-            }
-            for c in cookies
-        ]
+        domain_cookies = []
+        for c in cookies:
+            if (not c.domain) or host.endswith(c.domain.strip(".")):
+                domain_cookies.append({
+                        'domain': c.domain,
+                        'expires': c.expires,
+                        'name': c.name,
+                        'path': c.path,
+                        'value': c.value.replace('"', "")
+                    })
+        return domain_cookies
 
     def _get_proxy(self, proxy: Optional[Dict] = None, proxies: Optional[Dict] = None) -> str:
         proxy = proxy or proxies or self.proxies
@@ -472,7 +479,7 @@ class Session:
             # "tlsClientIdentifier": "",
             "withDebug": self.debug,
             "withDefaultCookieJar": False,
-            "withoutCookieJar": False,
+            "withoutCookieJar": True,
             # "withRandomTLSExtensionOrder": False,
         }
 
@@ -548,7 +555,6 @@ class Session:
 
         header_order = [x.lower() for x in headers] if headers else None
 
-        request_cookies = self._prepare_cookies(cookies)
 
         proxy = self._get_proxy(proxy, proxies)
 
@@ -562,6 +568,9 @@ class Session:
 
         redirect = 0
         while True:
+            # Change the cookies incase the domain changes on a redirect or the cookies are updated in a redirect
+            request_cookies = self._prepare_cookies(url, cookies) 
+
             request_payload = self._build_request_payload(
                 method=method,
                 url=url,

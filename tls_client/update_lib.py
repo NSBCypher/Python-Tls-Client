@@ -48,7 +48,7 @@ def update_lib(only_if_no_dir=False) -> None:
     session = requests.Session()
 
     if only_if_no_dir and os.path.exists(DOWNLOAD_DIR):
-        print("Directory already exists. Skipping update.")
+        # print("Directory already exists. Skipping update.")
         return
 
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
