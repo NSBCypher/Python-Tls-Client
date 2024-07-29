@@ -567,6 +567,7 @@ class Session:
         start = preferred_clock()
 
         redirect = 0
+        history = []
         while True:
             # Change the cookies incase the domain changes on a redirect or the cookies are updated in a redirect
             request_cookies = self._prepare_cookies(url, cookies) 
@@ -613,12 +614,13 @@ class Session:
             else:
                 response = build_response(response_object, response_cookie_jar)
             response.elapsed = timedelta(seconds=elapsed)
+            response.history = history
 
             if not allow_redirects or not response.is_redirect:
                 return response
 
             redirect += 1
-
+            history.append(response)
             if redirect > self.MAX_REDIRECTS:
                 raise TLSClientExeption(f"Max redirects ({self.MAX_REDIRECTS}) exceeded")
 
