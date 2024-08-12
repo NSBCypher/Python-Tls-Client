@@ -551,7 +551,8 @@ class Session:
 
         headers = self._merge_headers(headers)
         if content_type is not None:
-            headers["Content-Type"] = content_type
+            if not headers.get("content-type"):
+                headers["Content-Type"] = content_type
 
         header_order = [x.lower() for x in headers] if headers else None
 
