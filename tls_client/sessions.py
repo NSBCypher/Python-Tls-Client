@@ -550,9 +550,8 @@ class Session:
         request_body, content_type = self._prepare_request_body(data, json)
 
         headers = self._merge_headers(headers)
-        if content_type is not None:
-            if not headers.get("content-type"):
-                headers["Content-Type"] = content_type
+        if content_type is not None and "content-type" not in headers:
+            headers["Content-Type"] = content_type
 
         header_order = [x.lower() for x in headers] if headers else None
 
@@ -645,13 +644,32 @@ class Session:
 
     @staticmethod
     def _rebuild_url(url: str, response: Response) -> Optional[str]:
-        url_redirect = response.headers.get("Location", None)
-        if not url_redirect:
-            return None
-        if url_redirect.startswith("/"):
-            url = urljoin(url, url_redirect)
+        def requote_uri(uri: str) -> str:
+            return urllib.parse.quote(uri, safe="/#%[]=:;$&()+,!?*@'~")
+
+        url = response.headers["location"]
+        parsed_rurl = urllib.parse.urlparse(response.url)
+        previous_fragment = parsed_rurl.fragment
+        
+        if url.startswith("//"):
+            parsed_rurl = urllib.parse.urlparse(response.url)
+            url = ":".join([parsed_rurl.scheme, url])
+
+        # Normalize url case and attach previous fragment if needed (RFC 7231 7.1.2)
+        parsed = urllib.parse.urlparse(url)
+        if parsed.fragment == "" and previous_fragment:
+            parsed = parsed._replace(fragment=previous_fragment)
+        elif parsed.fragment:
+            previous_fragment = parsed.fragment
+        url = parsed.geturl()
+
+        # Facilitate relative 'location' headers, as allowed by RFC 7231.
+        # (e.g. '/path/to/resource' instead of 'http://domain.tld/path/to/resource')
+        # Compliant with RFC3986, we percent encode the url.
+        if not parsed.netloc:
+            url = urljoin(response.url, requote_uri(url))
         else:
-            url = url_redirect
+            url = requote_uri(url)
         return url
 
     @staticmethod
