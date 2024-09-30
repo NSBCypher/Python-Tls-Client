@@ -76,6 +76,8 @@ class Session:
                  debug: bool = False,
                  certificate_pinning: Optional[Dict[str, List[str]]] = None,
                  disable_ipv6: bool = False,
+                 save_cookies: bool = True,
+                 proxies: Optional[Dict[str, str]] = {}
                  ) -> None:
 
         self.MAX_REDIRECTS: int = 30
@@ -98,7 +100,7 @@ class Session:
         #     "http": "http://user:pass@ip:port",
         #     "https": "http://user:pass@ip:port"
         # }
-        self.proxies = {}
+        self.proxies = proxies
 
         # Dictionary of querystring data to attach to each request. The dictionary values may be lists for representing
         # multivalued query parameters.
@@ -320,6 +322,8 @@ class Session:
         self.disable_ipv6 = disable_ipv6
         # debugging
         self.debug = debug
+        # persisting cookies
+        self.save_cookies = save_cookies
 
     def __enter__(self):
         return self
@@ -544,6 +548,9 @@ class Session:
             stream: Optional[bool] = False,
             chunk_size: Optional[int] = 1024,
     ) -> Response:
+        
+        if not self.save_cookies:
+            self.cookies.clear()
 
         url = self._prepare_url(url, params)
 
