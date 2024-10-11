@@ -77,7 +77,7 @@ class Session:
                  certificate_pinning: Optional[Dict[str, List[str]]] = None,
                  disable_ipv6: bool = False,
                  save_cookies: bool = True,
-                 proxies: Optional[Dict[str, str]] = {}
+                 proxies: Optional[Dict[str, str]] = None
                  ) -> None:
 
         self.MAX_REDIRECTS: int = 30
@@ -100,7 +100,7 @@ class Session:
         #     "http": "http://user:pass@ip:port",
         #     "https": "http://user:pass@ip:port"
         # }
-        self.proxies = proxies
+        self.proxies = proxies or {}
 
         # Dictionary of querystring data to attach to each request. The dictionary values may be lists for representing
         # multivalued query parameters.
@@ -562,6 +562,12 @@ class Session:
 
         header_order = [x.lower() for x in headers] if headers else None
 
+        # if content-length in header_order, move it to the first position (same as browser)
+        if header_order and "content-length" in header_order:
+            header_order.remove("content-length")
+            header_order.insert(0, "content-length")
+        elif request_body:
+            header_order.insert(0, "content-length")
 
         proxy = self._get_proxy(proxy, proxies)
 
