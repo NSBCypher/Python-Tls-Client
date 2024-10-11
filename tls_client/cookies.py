@@ -11,6 +11,116 @@ try:
 except ImportError:
     import dummy_threading as threading
 
+'''
+class CookieJair
+   ...
+   def _cookie_from_cookie_tuple(self, tup, request):
+     ...
+     elif not domain.startswith("."):
+        domain = "."+domain 
+
+This function leads to non-browser behavior when setting cookies. For some reason, the http library adds a dot to the domain if the dot is not present.
+This means www.example.com will be set as .www.example.com.
+Chrome maintains the domain as is, so www.example.com will be set as www.example.com.
+This patch changes the behavior to match that of Chrome.
+'''
+import re
+from http.cookiejar import request_path, escape_path, eff_request_host, request_port, _debug
+class Absent: pass
+def _patched_cookie_from_cookie_tuple(self, tup, request):
+    # standard is dict of standard cookie-attributes, rest is dict of the
+    # rest of them
+    name, value, standard, rest = tup
+
+    domain = standard.get("domain", Absent)
+    path = standard.get("path", Absent)
+    port = standard.get("port", Absent)
+    expires = standard.get("expires", Absent)
+
+    # set the easy defaults
+    version = standard.get("version", None)
+    if version is not None:
+        try:
+            version = int(version)
+        except ValueError:
+            return None  # invalid version, ignore cookie
+    secure = standard.get("secure", False)
+    # (discard is also set if expires is Absent)
+    discard = standard.get("discard", False)
+    comment = standard.get("comment", None)
+    comment_url = standard.get("commenturl", None)
+
+    # set default path
+    if path is not Absent and path != "":
+        path_specified = True
+        path = escape_path(path)
+    else:
+        path_specified = False
+        path = request_path(request)
+        i = path.rfind("/")
+        if i != -1:
+            if version == 0:
+                # Netscape spec parts company from reality here
+                path = path[:i]
+            else:
+                path = path[:i+1]
+        if len(path) == 0: path = "/"
+
+    # set default domain
+    domain_specified = domain is not Absent
+    # but first we have to remember whether it starts with a dot
+    domain_initial_dot = False
+    if domain_specified:
+        domain_initial_dot = bool(domain.startswith("."))
+    if domain is Absent:
+        req_host, erhn = eff_request_host(request)
+        domain = erhn
+    elif not domain.startswith("."):
+        pass # CHANGED THIS LINE - we want the original cookie, true to browser behavior
+        # domain = "."+domain
+
+    # set default port
+    port_specified = False
+    if port is not Absent:
+        if port is None:
+            # Port attr present, but has no value: default to request port.
+            # Cookie should then only be sent back on that port.
+            port = request_port(request)
+        else:
+            port_specified = True
+            port = re.sub(r"\s+", "", port)
+    else:
+        # No port attr present.  Cookie can be sent back on any port.
+        port = None
+
+    # set default expires and discard
+    if expires is Absent:
+        expires = None
+        discard = True
+    elif expires <= self._now:
+        # Expiry date in past is request to delete cookie.  This can't be
+        # in DefaultCookiePolicy, because can't delete cookies there.
+        try:
+            self.clear(domain, path, name)
+        except KeyError:
+            pass
+        _debug("Expiring cookie, domain='%s', path='%s', name='%s'",
+                domain, path, name)
+        return None
+
+    return Cookie(version,
+                    name, value,
+                    port, port_specified,
+                    domain, domain_specified, domain_initial_dot,
+                    path, path_specified,
+                    secure,
+                    expires,
+                    discard,
+                    comment,
+                    comment_url,
+                    rest)
+
+CookieJar._cookie_from_cookie_tuple = _patched_cookie_from_cookie_tuple
 
 class MockRequest:
     """
@@ -439,6 +549,11 @@ def extract_cookies_to_jar(
         cookie_jar: RequestsCookieJar,
         response_headers: dict
 ) -> RequestsCookieJar:
+    '''
+        Uses the response headers to extract cookies and store them in the cookie jar.
+        The request headers are used as a backup to get the correct domain and path if not present in the response headers.
+        NOTE: This function adds cookies with an initial dot in http.cookiejar.return_ok_domain()
+    '''
     response_cookie_jar = cookiejar_from_dict({})
 
     req = MockRequest(request_url, request_headers)
@@ -452,6 +567,5 @@ def extract_cookies_to_jar(
             )
     res = MockResponse(http_message)
     response_cookie_jar.extract_cookies(res, req)
-
     merge_cookies(cookie_jar, response_cookie_jar)
     return response_cookie_jar
