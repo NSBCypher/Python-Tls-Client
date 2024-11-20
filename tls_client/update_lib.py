@@ -40,8 +40,24 @@ def save_local_version(version: str) -> None:
 def download_file(session: requests.Session, url: str, dest_path: str) -> None:
     response = session.get(url)
     response.raise_for_status()
-    with open(dest_path, "wb") as f:
-        f.write(response.content)
+    try:
+        with open(dest_path, "wb") as f:
+            f.write(response.content)
+    # handle permission denied i.e. file is in use
+    except PermissionError:
+        # Rename the old file so we can write the new one
+        directory, filename = os.path.split(dest_path)
+        modified_filename = f"~{filename}"
+        while True:           
+            modified_path = os.path.join(directory, modified_filename)
+            if os.path.exists(modified_path):
+                modified_filename = f"~{modified_filename}"
+            else:
+                break
+        os.rename(dest_path, modified_path)
+        with open(dest_path, "wb") as f:
+            f.write(response.content)        
+    
 
 
 def update_lib(only_if_no_dir=False) -> None:
