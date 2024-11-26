@@ -12,6 +12,8 @@ except ImportError:
     import dummy_threading as threading
 
 '''
+The below patch is to fix the behavior of the CookieJar class in the http library.
+
 class CookieJair
    ...
    def _cookie_from_cookie_tuple(self, tup, request):

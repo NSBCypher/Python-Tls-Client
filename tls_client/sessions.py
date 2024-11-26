@@ -8,11 +8,11 @@ import uuid
 from datetime import timedelta
 from json import dumps, loads
 from sys import platform
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, Tuple
 from urllib.parse import urljoin
 
 from .__version__ import __version__
-from .cffi import addCookiesToSession, destroySession, freeMemory, getCookiesFromSession, request
+from .cffi import destroySession, freeMemory, request
 from .cookies import cookiejar_from_dict, extract_cookies_to_jar, merge_cookies
 from .exceptions import TLSClientExeption
 from .response import Response, build_response
@@ -346,32 +346,14 @@ class Session:
         freeMemory(destroy_session_response_object['id'].encode('utf-8'))
         # todo add exception if success is False
         return destroy_session_response_string
-
-    def get_cookies_from_session(self, url: str) -> List[Dict[str, str]]:
-        cookie_payload = {
-            "sessionId": self._session_id,
-            "url": url,
-        }
-        cookie_response = getCookiesFromSession(dumps(cookie_payload).encode('utf-8'))
-        cookie_response_bytes = ctypes.string_at(cookie_response)
-        cookie_response_string = cookie_response_bytes.decode('utf-8')
-        cookie_response_object = loads(cookie_response_string)
-        freeMemory(cookie_response_object['id'].encode('utf-8'))
-        return cookie_response_object["cookies"]
-
-    def add_cookies_to_session(self, url: str, cookies: List[Dict[str, str]]) -> None:
-        # https://bogdanfinn.gitbook.io/open-source-oasis/shared-library/payload#cookie-input
-        cookies_payload = {
-            "cookies": cookies,
-            "sessionId": self._session_id,
-            "url": url,
-        }
-        # todo add exception, no session
-        add_cookies_to_session_response = addCookiesToSession(dumps(cookies_payload).encode('utf-8'))
-        add_cookies_bytes = ctypes.string_at(add_cookies_to_session_response)
-        add_cookies_string = add_cookies_bytes.decode('utf-8')
-        add_cookies_object = loads(add_cookies_string)
-        freeMemory(add_cookies_object['id'].encode('utf-8'))
+    
+    def _cffi_request(self, request_payload: dict) -> Response:
+        response = request(dumps(request_payload).encode('utf-8'))
+        response_bytes = ctypes.string_at(response)
+        response_string = response_bytes.decode('utf-8')
+        response_object = loads(response_string)
+        freeMemory(response_object['id'].encode('utf-8'))
+        return response_object
 
     @staticmethod
     def _prepare_url(url: str, params: Optional[Dict] = None) -> str:
@@ -387,7 +369,7 @@ class Session:
     @staticmethod
     def _prepare_request_body(data: Optional[Union[str, dict]] = None,
                               json: Optional[Dict] = None
-                              ) -> (Optional[str], Optional[str]):
+                              ) -> Tuple[Optional[str], Optional[str]]:
         if data is None and json is not None:
             if type(json) in [dict, list]:
                 json = dumps(json)
@@ -602,11 +584,7 @@ class Session:
             )
 
             # Execute the request using the TLS client
-            response = request(dumps(request_payload).encode('utf-8'))
-            response_bytes = ctypes.string_at(response)
-            response_string = response_bytes.decode('utf-8')
-            response_object = loads(response_string)
-            freeMemory(response_object['id'].encode('utf-8'))
+            response_object = self._cffi_request(request_payload)
 
             elapsed = preferred_clock() - start
 
