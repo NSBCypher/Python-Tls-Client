@@ -6,7 +6,7 @@ import time
 import urllib.parse
 import uuid
 from datetime import timedelta
-from json import dumps, loads
+from orjson import dumps, loads
 from sys import platform
 from typing import Any, Dict, List, Optional, Union, Tuple
 from urllib.parse import urljoin
@@ -14,7 +14,7 @@ from urllib.parse import urljoin
 from .__version__ import __version__
 from .cffi import destroySession, freeMemory, request
 from .cookies import cookiejar_from_dict, extract_cookies_to_jar, merge_cookies
-from .exceptions import TLSClientExeption
+from .exceptions import TLSClientException
 from .response import Response, build_response
 from .settings import ClientIdentifiers
 from .structures import CaseInsensitiveDict
@@ -55,7 +55,7 @@ class StoppableThread(threading.Thread):
 
 class Session:
     def __init__(self,
-                 client_identifier: ClientIdentifiers = "chrome_131",
+                 client_identifier: ClientIdentifiers = "chrome_133",
                  ja3_string: Optional[str] = None,
                  h2_settings: Optional[Dict[str, int]] = None,
                  h2_settings_order: Optional[List[str]] = None,
@@ -77,7 +77,8 @@ class Session:
                  certificate_pinning: Optional[Dict[str, List[str]]] = None,
                  disable_ipv6: bool = False,
                  save_cookies: bool = True,
-                 proxies: Optional[Dict[str, str]] = None
+                 proxies: Optional[Dict[str, str]] = None,
+                 is_rotating_proxy: Optional[bool] = False
                  ) -> None:
 
         self.MAX_REDIRECTS: int = 30
@@ -101,6 +102,7 @@ class Session:
         #     "https": "http://user:pass@ip:port"
         # }
         self.proxies = proxies or {}
+        self.is_rotating_proxy = is_rotating_proxy
 
         # Dictionary of querystring data to attach to each request. The dictionary values may be lists for representing
         # multivalued query parameters.
@@ -339,7 +341,7 @@ class Session:
             "sessionId": self._session_id
         }
 
-        destroy_session_response = destroySession(dumps(destroy_session_payload).encode('utf-8'))
+        destroy_session_response = destroySession(dumps(destroy_session_payload))
         destroy_session_response_bytes = ctypes.string_at(destroy_session_response)
         destroy_session_response_string = destroy_session_response_bytes.decode('utf-8')
         destroy_session_response_object = loads(destroy_session_response_string)
@@ -348,7 +350,7 @@ class Session:
         return destroy_session_response_string
     
     def _cffi_request(self, request_payload: dict) -> Response:
-        response = request(dumps(request_payload).encode('utf-8'))
+        response = request(dumps(request_payload))
         response_bytes = ctypes.string_at(response)
         response_string = response_bytes.decode('utf-8')
         response_object = loads(response_string)
@@ -372,7 +374,7 @@ class Session:
                               ) -> Tuple[Optional[str], Optional[str]]:
         if data is None and json is not None:
             if type(json) in [dict, list]:
-                json = dumps(json)
+                return dumps(json), "application/json"
             return json, "application/json"
         elif data is not None and type(data) not in [str, bytes]:
             return urllib.parse.urlencode(data, doseq=True), "application/x-www-form-urlencoded"
@@ -423,6 +425,7 @@ class Session:
                                request_body: Optional[Union[str, bytes, bytearray]],
                                request_cookies: List[Dict],
                                is_byte_request: bool,
+                               is_rotating_proxy: bool,
                                timeout: int,
                                proxy: str,
                                verify: bool,
@@ -448,7 +451,7 @@ class Session:
             "insecureSkipVerify": not verify,
             "isByteRequest": is_byte_request,
             "isByteResponse": True,
-            "isRotatingProxy": False,
+            "isRotatingProxy": is_rotating_proxy,
             "localAddress": None,
             "proxyUrl": proxy,
             "requestBody": base64.b64encode(request_body).decode() if is_byte_request else request_body,
@@ -494,7 +497,7 @@ class Session:
                 "ECHCandidatePayloads": None,
                 "alpnProtocols": None,
                 "alpsProtocols": None,
-                "certCompressionAlgo": self.cert_compression_algo,
+                "certCompressionAlgo": [self.cert_compression_algo],
                 "connectionFlow": self.connection_flow,
                 "h2Settings": self.h2_settings,
                 "h2SettingsOrder": self.h2_settings_order,
@@ -506,6 +509,7 @@ class Session:
                 "supportedDelegatedCredentialsAlgorithms": self.supported_delegated_credentials_algorithms,
                 "supportedSignatureAlgorithms": self.supported_signature_algorithms,
                 "supportedVersions": self.supported_versions,
+                "recordSizeLimit": 0,
             }
         else:
             request_payload["tlsClientIdentifier"] = self.client_identifier
@@ -527,6 +531,7 @@ class Session:
             timeout: Optional[int] = None,
             proxy: Optional[Dict] = None,
             proxies: Optional[Dict] = None,
+            is_rotating_proxy: Optional[bool] = None,
             stream: Optional[bool] = False,
             chunk_size: Optional[int] = 1024,
     ) -> Response:
@@ -552,6 +557,8 @@ class Session:
             header_order.insert(0, "content-length")
 
         proxy = self._get_proxy(proxy, proxies)
+        if is_rotating_proxy is None:
+            is_rotating_proxy = self.is_rotating_proxy
 
         timeout = timeout or self.timeout
 
@@ -575,6 +582,7 @@ class Session:
                 request_body=request_body,
                 request_cookies=request_cookies,
                 is_byte_request=is_byte_request,
+                is_rotating_proxy=is_rotating_proxy,
                 timeout=timeout,
                 proxy=proxy,
                 verify=verify,
@@ -590,7 +598,7 @@ class Session:
 
             # Handle response, split up into new method?
             if response_object["status"] == 0:
-                raise TLSClientExeption(response_object["body"])
+                raise TLSClientException(response_object["body"])
 
             response_cookie_jar = extract_cookies_to_jar(
                 request_url=url,
@@ -613,13 +621,14 @@ class Session:
             redirect += 1
             history.append(response)
             if redirect > self.MAX_REDIRECTS:
-                raise TLSClientExeption(f"Max redirects ({self.MAX_REDIRECTS}) exceeded")
+                raise TLSClientException(f"Max redirects ({self.MAX_REDIRECTS}) exceeded")
 
             url = self._rebuild_url(url, response)
             method = self._rebuild_methods(method, response)
 
             if response.status_code not in (307, 308):
                 request_body = None
+                is_byte_request = False
                 headers = self._rebuild_headers(headers)
 
     @staticmethod
