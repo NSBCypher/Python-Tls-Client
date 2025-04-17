@@ -446,7 +446,7 @@ class Session:
             "disableIPV6": self.disable_ipv6,
             "followRedirects": False,
             "forceHttp1": self.force_http1,
-            "headerOrder": header_order,
+            "headerOrder": self.header_order,
             "headers": dict(headers),
             "insecureSkipVerify": not verify,
             "isByteRequest": is_byte_request,
@@ -547,7 +547,7 @@ class Session:
         if content_type is not None and "content-type" not in headers:
             headers["Content-Type"] = content_type
 
-        header_order = [x.lower() for x in headers] if headers else None
+        # header_order = [x.lower() for x in headers] if headers else None
 
         # if content-length in header_order, move it to the first position (same as browser)
         if header_order and "content-length" in header_order:
@@ -578,7 +578,7 @@ class Session:
                 method=method,
                 url=url,
                 headers=headers,
-                header_order=header_order,
+                # header_order=header_order,
                 request_body=request_body,
                 request_cookies=request_cookies,
                 is_byte_request=is_byte_request,
