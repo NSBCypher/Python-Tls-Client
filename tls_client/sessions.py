@@ -421,7 +421,7 @@ class Session:
                                method: str,
                                url: str,
                                headers: CaseInsensitiveDict,
-                               header_order: Optional[List[str]],
+                               # header_order: Optional[List[str]],
                                request_body: Optional[Union[str, bytes, bytearray]],
                                request_cookies: List[Dict],
                                is_byte_request: bool,
