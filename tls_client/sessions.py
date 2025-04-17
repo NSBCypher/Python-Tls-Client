@@ -549,12 +549,12 @@ class Session:
 
         # header_order = [x.lower() for x in headers] if headers else None
 
-        # if content-length in header_order, move it to the first position (same as browser)
-        if header_order and "content-length" in header_order:
-            header_order.remove("content-length")
-            header_order.insert(0, "content-length")
-        elif request_body:
-            header_order.insert(0, "content-length")
+        # # if content-length in header_order, move it to the first position (same as browser)
+        # if header_order and "content-length" in header_order:
+        #     header_order.remove("content-length")
+        #     header_order.insert(0, "content-length")
+        # elif request_body:
+        #     header_order.insert(0, "content-length")
 
         proxy = self._get_proxy(proxy, proxies)
         if is_rotating_proxy is None:
